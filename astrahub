@@ -10045,10 +10045,10 @@ function clearBody(body) for _,c in ipairs(body:GetChildren()) do if not c:IsA("
 -- Keep dynamically-created tab controls above the decorative ContentBg.
 function bringBodyContentToFront(body)
     if not body then return end
-    body.ZIndex = 10
+    body.ZIndex = 300
     for _,inst in ipairs(body:GetDescendants()) do
-        if inst:IsA("GuiObject") and inst.ZIndex < 10 then
-            inst.ZIndex = 10
+        if inst:IsA("GuiObject") and inst.ZIndex < 301 then
+            inst.ZIndex = 301
         end
     end
 end
@@ -10471,7 +10471,9 @@ function makeMainPanel(t,size,pos)
     body.Active=true
     body.ClipsDescendants=true
     body.Selectable=true
+    body.Active=true
     body.TouchInputEnabled=true
+    body.Visible=true
     body.ScrollingFrameStyle=Enum.ScrollingFrameStyle.Default
     pcall(function()
         body.ElasticBehavior=Enum.ElasticBehavior.Always
@@ -11530,12 +11532,14 @@ task.spawn(function() -- own function scope: keeps locals off the main
     end)
 end)
 
--- LAZY UI LOADING
-if _G.addLazyUI then
-    _G.addLazyUI(main, not Config.AutoCloseOnExec)
-    _G.addLazyUI(actionSettingsPanel, false)
-    _G.addLazyUI(tpSpeedSettingsPanel, false)
+-- PANEL VISIBILITY: keep the Hub and its floating panels immediately visible.
+-- The previous lazy-visibility pass could hide newly-created panels after the
+-- mobile layout was already displayed, producing an empty main window.
+if main and main.Parent then
+    main.Visible = not Config.AutoCloseOnExec
 end
+if actionSettingsPanel and actionSettingsPanel.Parent then actionSettingsPanel.Visible = false end
+if tpSpeedSettingsPanel and tpSpeedSettingsPanel.Parent then tpSpeedSettingsPanel.Visible = false end
 
 immediatePanels = {
     ["Steal Target"] = true,
@@ -11544,21 +11548,13 @@ immediatePanels = {
 }
 
 for name, panel in pairs(panels) do
-    if not string.match(name, "Body$") then
-        -- _G._MynxxPanelVis survives re-executes; override Config if it has a value
-        local fromG = _G._MynxxPanelVis[name]
-        local targetVis
-        if fromG ~= nil then
-            targetVis = fromG
-            Config.Visibilities[name] = fromG  -- sync back so Config is consistent
-        else
-            if Config.Visibilities[name] ~= nil then targetVis = Config.Visibilities[name] else targetVis = true end
-        end
-        if immediatePanels[name] then
-            panel.Visible = targetVis
-        elseif _G.addLazyUI then
-            _G.addLazyUI(panel, targetVis, false, name)
-        end
+    if not string.match(name, "Body$") and panel and panel.Parent then
+        local saved = Config.Visibilities and Config.Visibilities[name]
+        local stored = _G._MynxxPanelVis and _G._MynxxPanelVis[name]
+        local targetVis = stored
+        if targetVis == nil then targetVis = saved end
+        if targetVis == nil then targetVis = true end
+        panel.Visible = targetVis
     end
 end
 
@@ -13629,8 +13625,19 @@ fpsText=Instance.new("TextLabel"); fpsText.Name="FpsText"; fpsText.LayoutOrder=3
 if _G.addLazyUI then _G.addLazyUI(bottomBar, true) end
 
 task.defer(function()
-    loadTab("Auto TP")
+    if main and main.Parent then main.Visible = not Config.AutoCloseOnExec end
+    if mainBody and mainBody.Parent then mainBody.Visible = true end
+    loadTab(UI.CurrentTab or "Auto TP")
     rebuildActions(); rebuildActionSettings(); rebuildTpSpeedSettings()
+    task.delay(0.15, function()
+        if main and main.Parent and not Config.AutoCloseOnExec then main.Visible = true end
+        if mainBody and mainBody.Parent then
+            mainBody.Visible = true
+            mainBody.CanvasPosition = Vector2.new(0,0)
+            pcall(function() mainBody:GetPropertyChangedSignal("AbsoluteSize"):Wait() end)
+        end
+        pcall(function() loadTab(UI.CurrentTab or "Auto TP") end)
+    end)
 end)
 
 -- Recover automatically if another initialization/theme pass ever leaves the tab body empty.

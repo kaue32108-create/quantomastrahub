@@ -10059,16 +10059,16 @@ local function ensureMinimizeOrb()
     if not gui_sg then return nil end
     minimizeOrb=Instance.new("TextButton")
     minimizeOrb.Name="AstraHubMinimizeOrb"
-    minimizeOrb.Size=UDim2.fromOffset(58,58)
-    minimizeOrb.AnchorPoint=Vector2.new(0.5,0.5)
-    minimizeOrb.Position=UDim2.new(0.5,0,0.82,0)
+    minimizeOrb.Size=UDim2.fromOffset(42,42)
+    minimizeOrb.AnchorPoint=Vector2.new(0,0)
+    minimizeOrb.Position=UDim2.new(0,10,0,110)
     minimizeOrb.BackgroundColor3=Theme.Accent
     minimizeOrb.BackgroundTransparency=0.05
     minimizeOrb.BorderSizePixel=0
     minimizeOrb.Text="A"
     minimizeOrb.TextColor3=Color3.new(1,1,1)
     minimizeOrb.Font=Enum.Font.GothamBlack
-    minimizeOrb.TextSize=22
+    minimizeOrb.TextSize=16
     minimizeOrb.AutoButtonColor=false
     minimizeOrb.Visible=false
     minimizeOrb.ZIndex=10000
@@ -10078,10 +10078,10 @@ local function ensureMinimizeOrb()
     corner(minimizeOrb,99)
     stroke(minimizeOrb,Theme.AccentLight or Theme.Accent,2,0.05)
     minimizeOrb.MouseEnter:Connect(function()
-        tw(minimizeOrb,{BackgroundColor3=Theme.AccentLight,Size=UDim2.fromOffset(62,62)},0.10)
+        tw(minimizeOrb,{BackgroundColor3=Theme.AccentLight,Size=UDim2.fromOffset(46,46)},0.10)
     end)
     minimizeOrb.MouseLeave:Connect(function()
-        tw(minimizeOrb,{BackgroundColor3=Theme.Accent,Size=UDim2.fromOffset(58,58)},0.10)
+        tw(minimizeOrb,{BackgroundColor3=Theme.Accent,Size=UDim2.fromOffset(42,42)},0.10)
     end)
     minimizeOrb.Activated:Connect(function()
         if main then openAnim(main) end

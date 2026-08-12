@@ -10708,6 +10708,26 @@ for _,pair in ipairs({{"Astra Hub",main},{"Astra Hub\nInvisible Steal",panels["I
     {"Astra Hub\nActions",panels["Actions"]},{"Astra Hub\nSteal Panel",panels["Steal Panel"]},{"Astra Hub\nSteal Target",panels["Steal Target"]},
     {"Astra Hub\nAction Settings",actionSettingsPanel},{"Astra Hub\nTP & Clone Settings",tpSpeedSettingsPanel}}) do applySavedPosition(pair[1],pair[2]) end
 
+-- MOBILE START POSITION FIX
+-- On phones/tablets, ignore an old saved desktop position for the main menu
+-- and always start it centered so the tabs/buttons are immediately tappable.
+if UIS.TouchEnabled then
+    main.AnchorPoint = Vector2.new(0.5, 0.5)
+    main.Position = UDim2.new(0.5, 0, 0.5, 0)
+    main.Visible = true
+
+    -- Keep the main menu in the safe center area after rotation/resize.
+    task.defer(function()
+        local cam = Workspace.CurrentCamera
+        if cam then
+            local vp = cam.ViewportSize
+            if vp.X > 0 and vp.Y > 0 then
+                main.Position = UDim2.new(0.5, 0, 0.5, 0)
+            end
+        end
+    end)
+end
+
 
 -- ============================================================
 -- GRIEF DETECTOR (Nexus): admin panel commands + grief gears.

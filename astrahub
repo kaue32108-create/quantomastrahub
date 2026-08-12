@@ -10059,16 +10059,16 @@ local function ensureMinimizeOrb()
     if not gui_sg then return nil end
     minimizeOrb=Instance.new("TextButton")
     minimizeOrb.Name="AstraHubMinimizeOrb"
-    minimizeOrb.Size=UDim2.fromOffset(42,42)
-    minimizeOrb.AnchorPoint=Vector2.new(0,0)
-    minimizeOrb.Position=UDim2.new(0,10,0,110)
+    minimizeOrb.Size=UDim2.fromOffset(58,58)
+    minimizeOrb.AnchorPoint=Vector2.new(0.5,0.5)
+    minimizeOrb.Position=UDim2.new(0.5,0,0.82,0)
     minimizeOrb.BackgroundColor3=Theme.Accent
     minimizeOrb.BackgroundTransparency=0.05
     minimizeOrb.BorderSizePixel=0
     minimizeOrb.Text="A"
     minimizeOrb.TextColor3=Color3.new(1,1,1)
     minimizeOrb.Font=Enum.Font.GothamBlack
-    minimizeOrb.TextSize=16
+    minimizeOrb.TextSize=22
     minimizeOrb.AutoButtonColor=false
     minimizeOrb.Visible=false
     minimizeOrb.ZIndex=10000
@@ -10078,10 +10078,10 @@ local function ensureMinimizeOrb()
     corner(minimizeOrb,99)
     stroke(minimizeOrb,Theme.AccentLight or Theme.Accent,2,0.05)
     minimizeOrb.MouseEnter:Connect(function()
-        tw(minimizeOrb,{BackgroundColor3=Theme.AccentLight,Size=UDim2.fromOffset(46,46)},0.10)
+        tw(minimizeOrb,{BackgroundColor3=Theme.AccentLight,Size=UDim2.fromOffset(62,62)},0.10)
     end)
     minimizeOrb.MouseLeave:Connect(function()
-        tw(minimizeOrb,{BackgroundColor3=Theme.Accent,Size=UDim2.fromOffset(42,42)},0.10)
+        tw(minimizeOrb,{BackgroundColor3=Theme.Accent,Size=UDim2.fromOffset(58,58)},0.10)
     end)
     minimizeOrb.Activated:Connect(function()
         if main then openAnim(main) end
@@ -10125,45 +10125,84 @@ makeDraggable = function(frame,handle,saveName) local dragging,dragStart,startPo
 end
 
 makeResizable = function(frame, minSize, panelName)
-    local h = Instance.new("TextButton")
-    h.Name = "ResizeGrip"
-    h.Size = UDim2.new(0, 16, 0, 16)
-    h.Position = UDim2.new(1, -16, 1, -16)
-    h.BackgroundTransparency = 1
-    h.Text = "◢"
-    h.TextColor3 = Theme.Dim or Color3.new(1, 1, 1)
-    h.TextSize = 12
-    h.ZIndex = 100
-    h.Visible = not UI.Locked -- grip only shows while the UI is unlocked
-    h.Parent = frame
+    -- Small gray resize handle in the bottom-right corner.
+    -- The hit area is larger than the visible triangle so it is easy to drag on mobile.
+    local hit = Instance.new("TextButton")
+    hit.Name = "ResizeGrip"
+    hit.Size = UDim2.fromOffset(24,24)
+    hit.Position = UDim2.new(1,-24,1,-24)
+    hit.BackgroundTransparency = 1
+    hit.Text = ""
+    hit.AutoButtonColor = false
+    hit.Active = true
+    hit.Selectable = true
+    hit.ZIndex = 1000
+    hit.Parent = frame
+
+    local visual = Instance.new("TextLabel")
+    visual.Name = "ResizeGripVisual"
+    visual.AnchorPoint = Vector2.new(1,1)
+    visual.Position = UDim2.new(1,-3,1,-3)
+    visual.Size = UDim2.fromOffset(13,13)
+    visual.BackgroundTransparency = 1
+    visual.Text = "◢"
+    visual.TextColor3 = Color3.fromRGB(145,145,155)
+    visual.TextTransparency = 0.05
+    visual.Font = Enum.Font.GothamBold
+    visual.TextSize = 13
+    visual.ZIndex = 1001
+    visual.Active = false
+    visual.Parent = hit
+
     _G.__MynxxGrips = _G.__MynxxGrips or {}
-    table.insert(_G.__MynxxGrips, h)
+    table.insert(_G.__MynxxGrips, hit)
+
     local dragging, dragStart, startSize = false, nil, nil
-    h.InputBegan:Connect(function(i)
+
+    local function beginResize(input)
         if UI.Locked then return end
-        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
-            dragging = true; dragStart = i.Position; startSize = frame.AbsoluteSize
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startSize = frame.AbsoluteSize
         end
-    end)
-    UIS.InputEnded:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+    end
+
+    hit.InputBegan:Connect(beginResize)
+
+    UIS.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
             if dragging then
                 dragging = false
                 if panelName then
                     if not Config.sizes then Config.sizes = {} end
-                    Config.sizes[panelName] = {x = frame.Size.X.Offset, y = frame.Size.Y.Offset}
+                    Config.sizes[panelName] = {
+                        x = math.floor(frame.AbsoluteSize.X),
+                        y = math.floor(frame.AbsoluteSize.Y)
+                    }
                     saveConfig()
                 end
             end
         end
     end)
-    UIS.InputChanged:Connect(function(i)
-        if dragging and not UI.Locked and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
-            local d = i.Position - dragStart
-            local scale = getGlobalScale()
-            local nx = math.max(minSize.X.Offset, startSize.X + (d.X / scale))
-            local ny = math.max(minSize.Y.Offset, startSize.Y + (d.Y / scale))
-            frame.Size = UDim2.new(0, nx, 0, ny)
+
+    UIS.InputChanged:Connect(function(input)
+        if not dragging or UI.Locked then return end
+        if input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch then return end
+
+        local d = input.Position - dragStart
+        local scale = getGlobalScale()
+        local nx = math.max(minSize.X.Offset, startSize.X + (d.X / scale))
+        local ny = math.max(minSize.Y.Offset, startSize.Y + (d.Y / scale))
+        frame.Size = UDim2.fromOffset(nx, ny)
+    end)
+
+    -- Keep the grip above the panel contents and visible on phones and PC.
+    task.defer(function()
+        if hit.Parent then
+            hit.Visible = true
+            hit.ZIndex = 1000
+            visual.ZIndex = 1001
         end
     end)
 end
@@ -10519,9 +10558,7 @@ function makeQuickPanel(t,size,pos)
     if Config.sizes and Config.sizes[t] then
         f.Size = UDim2.new(0, Config.sizes[t].x, 0, Config.sizes[t].y)
     end
-    if not string.find(t, "Admin Command Panel") then
-        makeResizable(f, UDim2.new(0, 150, 0, 150), t)
-    end
+    makeResizable(f, UDim2.new(0, 150, 0, 150), t)
     return f,body
 end
 

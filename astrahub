@@ -10072,6 +10072,8 @@ local function ensureMinimizeOrb()
     minimizeOrb.AutoButtonColor=false
     minimizeOrb.Visible=false
     minimizeOrb.ZIndex=10000
+    minimizeOrb.Active=true
+    minimizeOrb.Selectable=true
     minimizeOrb.Parent=gui_sg
     corner(minimizeOrb,99)
     stroke(minimizeOrb,Theme.AccentLight or Theme.Accent,2,0.05)
@@ -10081,7 +10083,7 @@ local function ensureMinimizeOrb()
     minimizeOrb.MouseLeave:Connect(function()
         tw(minimizeOrb,{BackgroundColor3=Theme.Accent,Size=UDim2.fromOffset(58,58)},0.10)
     end)
-    minimizeOrb.MouseButton1Click:Connect(function()
+    minimizeOrb.Activated:Connect(function()
         if main then openAnim(main) end
     end)
     return minimizeOrb
@@ -10282,6 +10284,8 @@ function makeMainPanel(t,size,pos)
     local dragHandle=Instance.new("Frame")
     dragHandle.Name="DragHandle"
     dragHandle.Size=UDim2.new(1,0,0,44)
+    dragHandle.ZIndex=100
+    dragHandle.Active=true
     dragHandle.BackgroundColor3=Theme.SidebarBg or Color3.fromRGB(0,0,0)
     dragHandle.BackgroundTransparency=UITransparency.Sidebar
     dragHandle.BorderSizePixel=0
@@ -10316,8 +10320,8 @@ function makeMainPanel(t,size,pos)
     -- background/game UI stays untouched and a purple orb can reopen it.
     local minimizeBtn=Instance.new("TextButton")
     minimizeBtn.Name="MinimizeButton"
-    minimizeBtn.Size=UDim2.fromOffset(34,28)
-    minimizeBtn.Position=UDim2.new(1,-42,0,8)
+    minimizeBtn.Size=UDim2.fromOffset(42,32)
+    minimizeBtn.Position=UDim2.new(1,-50,0,6)
     minimizeBtn.BackgroundColor3=Theme.SoftAccent or Theme.Accent
     minimizeBtn.BackgroundTransparency=0.12
     minimizeBtn.BorderSizePixel=0
@@ -10326,7 +10330,9 @@ function makeMainPanel(t,size,pos)
     minimizeBtn.Font=Enum.Font.GothamBlack
     minimizeBtn.TextSize=18
     minimizeBtn.AutoButtonColor=false
-    minimizeBtn.ZIndex=50
+    minimizeBtn.ZIndex=250
+    minimizeBtn.Active=true
+    minimizeBtn.Selectable=true
     minimizeBtn.Parent=dragHandle
     corner(minimizeBtn,8)
     stroke(minimizeBtn,Theme.AccentLight or Theme.Accent,1,0.25)
@@ -10336,12 +10342,13 @@ function makeMainPanel(t,size,pos)
     minimizeBtn.MouseLeave:Connect(function()
         tw(minimizeBtn,{BackgroundColor3=Theme.SoftAccent or Theme.Accent,BackgroundTransparency=0.12},0.10)
     end)
-    minimizeBtn.MouseButton1Click:Connect(function()
+    minimizeBtn.Activated:Connect(function()
         closeAnim(f)
     end)
 
     local tabBarFrame=Instance.new("Frame")
     tabBarFrame.Name="TopTabBar"
+    tabBarFrame.ZIndex=200
     tabBarFrame.Size=UDim2.new(1,0,0,34)
     tabBarFrame.Position=UDim2.new(0,0,0,44)
     tabBarFrame.BackgroundColor3=Theme.SidebarBg or Color3.fromRGB(0,0,0)
@@ -10375,6 +10382,7 @@ function makeMainPanel(t,size,pos)
     sidebarNav=tabBarScroll
 
     local sep=Instance.new("Frame")
+    sep.ZIndex=210
     sep.Size=UDim2.new(1,-20,0,1)
     sep.Position=UDim2.new(0,10,0,78)
     sep.BackgroundColor3=Theme.Accent
@@ -10402,43 +10410,66 @@ function makeMainPanel(t,size,pos)
     content.ZIndex=0
     content.Parent=contentBg
 
+    -- MAIN CONTENT SCROLLER
+    -- Starts immediately below the tab bar and stays inside the panel.
+    -- Manual CanvasSize is used for reliable touch scrolling on mobile.
     local body=Instance.new("ScrollingFrame")
-    body.Size=UDim2.new(1,-20,1,-16)
-    body.Position=UDim2.new(0,10,0,88)
+    body.Name="MainContentScroller"
+    body.Size=UDim2.new(1,-20,1,-92)
+    body.Position=UDim2.new(0,10,0,84)
     body.BackgroundTransparency=1
     body.BorderSizePixel=0
-    body.ZIndex=20
-    body.ScrollBarThickness=4
+    body.ZIndex=120
+    body.ScrollBarThickness=6
     body.ScrollBarImageColor3=Theme.Accent
-    body.ScrollBarImageTransparency=0.20
+    body.ScrollBarImageTransparency=0.08
     body.CanvasSize=UDim2.new(0,0,0,0)
-    body.AutomaticCanvasSize=Enum.AutomaticSize.Y
     body.ScrollingDirection=Enum.ScrollingDirection.Y
     body.ScrollingEnabled=true
     body.Active=true
     body.ClipsDescendants=true
-    pcall(function() body.ElasticBehavior=Enum.ElasticBehavior.Always end)
-    -- Keep the actual tab content directly above the decorative container.
+    body.Selectable=true
+    pcall(function()
+        body.ElasticBehavior=Enum.ElasticBehavior.Always
+        body.TouchInputEnabled=true
+    end)
     body.Parent=f
 
     local pad=Instance.new("UIPadding")
     pad.PaddingTop=UDim.new(0,6)
-    pad.PaddingBottom=UDim.new(0,10)
+    pad.PaddingBottom=UDim.new(0,18)
     pad.PaddingLeft=UDim.new(0,2)
     pad.PaddingRight=UDim.new(0,2)
     pad.Parent=body
 
     local lay=Instance.new("UIListLayout")
     lay.Padding=UDim.new(0,8)
+    lay.SortOrder=Enum.SortOrder.LayoutOrder
     lay.Parent=body
-    lay:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-        body.CanvasSize=UDim2.new(0,0,0,lay.AbsoluteContentSize.Y+16)
-    end)
+
+    local function updateMainScrollCanvas()
+        if not body.Parent then return end
+        local contentHeight=lay.AbsoluteContentSize.Y + 24
+        local visibleHeight=body.AbsoluteSize.Y
+        body.CanvasSize=UDim2.new(0,0,0,math.max(contentHeight,visibleHeight+1))
+    end
+
+    lay:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(updateMainScrollCanvas)
+    body:GetPropertyChangedSignal("AbsoluteSize"):Connect(updateMainScrollCanvas)
+    task.defer(updateMainScrollCanvas)
 
     tabBar=sidebarNav
     if Config.sizes and Config.sizes[t] then
         f.Size=UDim2.new(0,Config.sizes[t].x,0,Config.sizes[t].y)
     end
+    -- Re-assert the header controls after all panel layers are created.
+    dragHandle.ZIndex=100
+    minimizeBtn.ZIndex=250
+    if UIS.TouchEnabled then
+        minimizeBtn.Size=UDim2.fromOffset(46,34)
+        minimizeBtn.Position=UDim2.new(1,-54,0,5)
+    end
+
     makeDraggable(f,dragHandle,t)
     makeResizable(f,UDim2.new(0,340,0,300),t)
     return f,body

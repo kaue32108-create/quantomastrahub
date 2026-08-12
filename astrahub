@@ -10462,15 +10462,19 @@ function makeMainPanel(t,size,pos)
     body.ScrollBarThickness=6
     body.ScrollBarImageColor3=Theme.Accent
     body.ScrollBarImageTransparency=0.08
+    -- Let Roblox calculate the full vertical canvas from every option in the tab.
+    -- The extra bottom padding gives the last row enough room to be fully revealed.
     body.CanvasSize=UDim2.new(0,0,0,0)
+    body.AutomaticCanvasSize=Enum.AutomaticSize.Y
     body.ScrollingDirection=Enum.ScrollingDirection.Y
     body.ScrollingEnabled=true
     body.Active=true
     body.ClipsDescendants=true
     body.Selectable=true
+    body.TouchInputEnabled=true
+    body.ScrollingFrameStyle=Enum.ScrollingFrameStyle.Default
     pcall(function()
         body.ElasticBehavior=Enum.ElasticBehavior.Always
-        body.TouchInputEnabled=true
     end)
     body.Parent=f
 
@@ -10486,16 +10490,32 @@ function makeMainPanel(t,size,pos)
     lay.SortOrder=Enum.SortOrder.LayoutOrder
     lay.Parent=body
 
+    local bottomSpacer=Instance.new("Frame")
+    bottomSpacer.Name="ScrollBottomSpacer"
+    bottomSpacer.Size=UDim2.new(1,0,0,42)
+    bottomSpacer.BackgroundTransparency=1
+    bottomSpacer.BorderSizePixel=0
+    bottomSpacer.LayoutOrder=2147483647
+    bottomSpacer.Parent=body
+
     local function updateMainScrollCanvas()
         if not body.Parent then return end
-        local contentHeight=lay.AbsoluteContentSize.Y + 24
-        local visibleHeight=body.AbsoluteSize.Y
-        body.CanvasSize=UDim2.new(0,0,0,math.max(contentHeight,visibleHeight+1))
+        -- Keep a real manual fallback as well as AutomaticCanvasSize. This makes
+        -- the scroll range update correctly after a tab is rebuilt on mobile.
+        local contentHeight = lay.AbsoluteContentSize.Y + 52
+        local visibleHeight = body.AbsoluteSize.Y
+        local targetHeight = math.max(contentHeight, visibleHeight + 1)
+        body.CanvasSize = UDim2.new(0,0,0,targetHeight)
     end
 
-    lay:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(updateMainScrollCanvas)
+    lay:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        task.defer(updateMainScrollCanvas)
+    end)
     body:GetPropertyChangedSignal("AbsoluteSize"):Connect(updateMainScrollCanvas)
     task.defer(updateMainScrollCanvas)
+    task.delay(0.05, updateMainScrollCanvas)
+    task.delay(0.20, updateMainScrollCanvas)
+    task.delay(0.50, updateMainScrollCanvas)
 
     tabBar=sidebarNav
     if Config.sizes and Config.sizes[t] then

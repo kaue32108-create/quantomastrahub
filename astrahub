@@ -335,6 +335,138 @@ local old = playerGui:FindFirstChild("MynxxHub_V3"); if old then old:Destroy() e
 gui_sg = Instance.new("ScreenGui"); gui_sg.Name = "MynxxHub_V3"; gui_sg.ResetOnSpawn = false; gui_sg.IgnoreGuiInset = true; gui_sg.DisplayOrder = 9999999; gui_sg.Parent = playerGui
 gui = registerScreenGui(gui_sg)
 
+-- ============================================================
+-- PURPLE GALAXY - OPTIMIZED / LOW FPS IMPACT
+-- Only direct menu panels get stars. One shared RenderStepped loop.
+-- ============================================================
+do
+    local GALAXY_COUNT = 8 -- reduced from 24
+    local GALAXY_COLOR = Color3.fromRGB(185, 95, 255)
+    local GALAXY_BRIGHT = Color3.fromRGB(225, 185, 255)
+    local trackedPanels = {}
+    local panelList = {}
+
+    local function addGalaxyToPanel(panel)
+        if not panel or not panel:IsA("GuiObject") or trackedPanels[panel] then return end
+        if panel.Parent ~= gui_sg then return end
+        if panel.Name == "PurpleGalaxyStars" then return end
+
+        trackedPanels[panel] = true
+        table.insert(panelList, panel)
+
+        -- Single lightweight border. No gradient/glow per panel.
+        local border = Instance.new("UIStroke")
+        border.Name = "PurpleGalaxyBorder"
+        border.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+        border.Thickness = 1
+        border.Color = GALAXY_COLOR
+        border.Transparency = 0.18
+        border.Parent = panel
+
+        local layer = Instance.new("Frame")
+        layer.Name = "PurpleGalaxyStars"
+        layer.Size = UDim2.fromScale(1, 1)
+        layer.Position = UDim2.fromScale(0, 0)
+        layer.BackgroundTransparency = 1
+        layer.BorderSizePixel = 0
+        layer.ClipsDescendants = true
+        layer.Active = false
+        layer.ZIndex = math.max(0, panel.ZIndex - 1)
+        layer.Parent = panel
+
+        local stars = table.create(GALAXY_COUNT)
+        for i = 1, GALAXY_COUNT do
+            local star = Instance.new("Frame")
+            local px = math.random(2, 4)
+            star.Size = UDim2.fromOffset(px, px)
+            star.AnchorPoint = Vector2.new(0.5, 0.5)
+            star.BackgroundColor3 = math.random() < 0.18 and GALAXY_BRIGHT or GALAXY_COLOR
+            star.BackgroundTransparency = math.random(35, 65) / 100
+            star.BorderSizePixel = 0
+            star.Active = false
+            star.ZIndex = layer.ZIndex
+            star.Parent = layer
+
+            -- No UIStroke/UICorner per star: these were expensive when many panels existed.
+            local x = math.random(5, 95) / 100
+            local y = math.random(0, 100) / 100
+            star.Position = UDim2.fromScale(x, y)
+
+            stars[i] = {
+                object = star,
+                x = x,
+                y = y,
+                speed = math.random(35, 65) / 100,
+                drift = math.random(-4, 4) / 1000,
+                phase = math.random() * math.pi * 2,
+            }
+        end
+
+        panel._GalaxyStars = stars
+    end
+
+    -- Only panels directly inside the ScreenGui are considered menus.
+    -- This avoids decorating every content Frame/row/button.
+    local function scanTopLevelMenus()
+        for _, obj in ipairs(gui_sg:GetChildren()) do
+            if obj:IsA("Frame") or obj:IsA("ScrollingFrame") then
+                local s = obj.AbsoluteSize
+                if s.X >= 150 and s.Y >= 100 then
+                    addGalaxyToPanel(obj)
+                end
+            end
+        end
+    end
+
+    gui_sg.ChildAdded:Connect(function(obj)
+        task.defer(function()
+            if obj.Parent ~= gui_sg then return end
+            if obj:IsA("Frame") or obj:IsA("ScrollingFrame") then
+                addGalaxyToPanel(obj)
+            end
+        end)
+    end)
+
+    -- One update loop for all menus instead of one RenderStepped connection per menu.
+    local accumulator = 0
+    RunService.RenderStepped:Connect(function(dt)
+        accumulator += dt
+        -- 20 updates/sec is enough for a subtle background effect and much cheaper than 60/sec.
+        if accumulator < 0.05 then return end
+        local step = accumulator
+        accumulator = 0
+
+        for i = #panelList, 1, -1 do
+            local panel = panelList[i]
+            if not panel or not panel.Parent or not trackedPanels[panel] then
+                trackedPanels[panel] = nil
+                table.remove(panelList, i)
+            else
+                local stars = panel._GalaxyStars
+                if stars and panel.Visible then
+                    for _, s in ipairs(stars) do
+                        s.y += s.speed * step * 0.055
+                        s.x += s.drift * step
+                        s.phase += step * 2
+
+                        if s.y > 1.05 then
+                            s.y = -0.05
+                            s.x = math.random(5, 95) / 100
+                        end
+                        if s.x < -0.03 then s.x = 1.03 end
+                        if s.x > 1.03 then s.x = -0.03 end
+
+                        s.object.Position = UDim2.fromScale(s.x, s.y)
+                        s.object.BackgroundTransparency = 0.35 + ((math.sin(s.phase) + 1) * 0.5) * 0.30
+                    end
+                end
+            end
+        end
+    end)
+
+    task.defer(scanTopLevelMenus)
+end
+
 -- SHARED TOGGLE STATE
 ToggleState = {}
 function regToggle(name, default)
@@ -390,20 +522,20 @@ Themes = {
         BlacklistHover=Color3.fromRGB(65,38,44), BlacklistLeave=Color3.fromRGB(40,30,34),
     },
     Nexus = {
-        Background=Color3.fromRGB(28,28,30), MainBackground=Color3.fromRGB(22,22,24),
-        SidebarBg=Color3.fromRGB(16,16,18), ContentBg=Color3.fromRGB(30,30,33),
-        SidebarActive=Color3.fromRGB(55,55,60), SidebarActiveText=Color3.fromRGB(255,255,255),
-        SidebarInactiveText=Color3.fromRGB(185,185,192),
-        Panel=Color3.fromRGB(36,36,40), Row=Color3.fromRGB(44,44,48), RowHover=Color3.fromRGB(56,56,62),
-        Accent=Color3.fromRGB(175,175,185), AccentLight=Color3.fromRGB(95,95,105),
-        Green=Color3.fromRGB(175,175,185), Red=Color3.fromRGB(210,80,90), Red2=Color3.fromRGB(185,60,72),
-        Text=Color3.fromRGB(255,255,255), Dim=Color3.fromRGB(155,155,163), Stroke=Color3.fromRGB(0,0,0),
-        SoftButton=Color3.fromRGB(52,52,58), SoftButtonHover=Color3.fromRGB(66,66,73),
-        SoftAccent=Color3.fromRGB(44,44,50), SoftAccentHover=Color3.fromRGB(56,56,63),
-        ToggleOn=Color3.fromRGB(195,195,205), ToggleOff=Color3.fromRGB(42,42,47), ToggleOff2=Color3.fromRGB(42,42,47),
-        ToggleKnobOn=Color3.fromRGB(22,22,24), ToggleKnobOff=Color3.fromRGB(105,105,113),
-        InputBg=Color3.fromRGB(33,33,37), SliderBg=Color3.fromRGB(48,48,53), SliderFill=Color3.fromRGB(195,195,205),
-        BlacklistHover=Color3.fromRGB(65,38,44), BlacklistLeave=Color3.fromRGB(40,30,34),
+        Background=Color3.fromRGB(10,7,18), MainBackground=Color3.fromRGB(12,8,20),
+        SidebarBg=Color3.fromRGB(8,5,15), ContentBg=Color3.fromRGB(16,10,25),
+        SidebarActive=Color3.fromRGB(78,18,135), SidebarActiveText=Color3.fromRGB(255,225,255),
+        SidebarInactiveText=Color3.fromRGB(190,165,205),
+        Panel=Color3.fromRGB(22,12,34), Row=Color3.fromRGB(30,16,45), RowHover=Color3.fromRGB(45,20,65),
+        Accent=Color3.fromRGB(185,70,255), AccentLight=Color3.fromRGB(215,125,255),
+        Green=Color3.fromRGB(180,90,255), Red=Color3.fromRGB(255,80,140), Red2=Color3.fromRGB(205,45,105),
+        Text=Color3.fromRGB(255,255,255), Dim=Color3.fromRGB(175,150,195), Stroke=Color3.fromRGB(130,40,200),
+        SoftButton=Color3.fromRGB(34,17,50), SoftButtonHover=Color3.fromRGB(52,22,75),
+        SoftAccent=Color3.fromRGB(42,16,62), SoftAccentHover=Color3.fromRGB(65,22,90),
+        ToggleOn=Color3.fromRGB(185,55,255), ToggleOff=Color3.fromRGB(32,15,45), ToggleOff2=Color3.fromRGB(32,15,45),
+        ToggleKnobOn=Color3.fromRGB(255,255,255), ToggleKnobOff=Color3.fromRGB(135,100,155),
+        InputBg=Color3.fromRGB(20,10,30), SliderBg=Color3.fromRGB(48,22,68), SliderFill=Color3.fromRGB(185,55,255),
+        BlacklistHover=Color3.fromRGB(70,18,48), BlacklistLeave=Color3.fromRGB(38,12,30),
     }
 }
 Theme = {}
@@ -421,27 +553,27 @@ UIFont = {
 }
 
 UITransparency = {
-    MainPanel = 0.04,
-    Sidebar = 0.02,
-    Content = 0.05,
-    Panel = 0.06,
-    BottomBar = 0.08,
-    Button = 0.08,
-    MainButton = 0.10,
-    Row = 0.14,
-    RowAlt = 0.20,
-    SoftRow = 0.12,
-    Input = 0.10,
+    MainPanel = 0.12,
+    Sidebar = 0.08,
+    Content = 0.16,
+    Panel = 0.10,
+    BottomBar = 0.10,
+    Button = 0.10,
+    MainButton = 0.12,
+    Row = 0.18,
+    RowAlt = 0.24,
+    SoftRow = 0.16,
+    Input = 0.08,
     Toggle = 0,
     Hud = 0.20,
     Alert = 0.24,
     Progress = 0.20,
-    ConfigPanel = 0.06,
-    SidebarTab = 0.12,
-    TargetRow = 0.16,
-    TargetRowAlt = 0.30,
-    Dropdown = 0.04,
-    Outline = 0.72,
+    ConfigPanel = 0.08,
+    SidebarTab = 0.10,
+    TargetRow = 0.18,
+    TargetRowAlt = 0.28,
+    Dropdown = 0.06,
+    Outline = 0.35,
     Avatar = 0.18,
 }
 
@@ -9910,6 +10042,17 @@ tw = function(o,p,t) TweenService:Create(o,TweenInfo.new(t or 0.14,Enum.EasingSt
 addOutline = function(f) local o=Instance.new("UIStroke"); o.Color=Theme.Stroke; o.Thickness=1; o.Transparency=UITransparency.Outline; o.ApplyStrokeMode=Enum.ApplyStrokeMode.Border; o.Parent=f; return o end
 function clearBody(body) for _,c in ipairs(body:GetChildren()) do if not c:IsA("UIListLayout") and not c:IsA("UIPadding") then c:Destroy() end end end
 
+-- Keep dynamically-created tab controls above the decorative ContentBg.
+function bringBodyContentToFront(body)
+    if not body then return end
+    body.ZIndex = 10
+    for _,inst in ipairs(body:GetDescendants()) do
+        if inst:IsA("GuiObject") and inst.ZIndex < 10 then
+            inst.ZIndex = 10
+        end
+    end
+end
+
 function openAnim(f) if not f then return end; local us=f:FindFirstChild("MynxxScale") or Instance.new("UIScale"); us.Name="MynxxScale"; us.Parent=f
     local tgt=f.Position; f.Visible=true; us.Scale=0.92; f.Position=UDim2.new(tgt.X.Scale,tgt.X.Offset,tgt.Y.Scale,tgt.Y.Offset+18); tw(us,{Scale=1},0.20); tw(f,{Position=tgt},0.20) end
 function closeAnim(f) if not f then return end; f.Visible = false end
@@ -9968,54 +10111,298 @@ makeResizable = function(frame, minSize, panelName)
     end)
 end
 
-function makeHeader(f,t,isMain) local h=Instance.new("Frame"); h.Size=UDim2.new(1,0,0,42); h.BackgroundTransparency=1; h.Parent=f
-    local parts={}; for s in string.gmatch(t,"([^\n]+)") do table.insert(parts,s) end
-    if isMain then local l=Instance.new("TextLabel"); l.Size=UDim2.new(1,-50,0,24); l.Position=UDim2.new(0,13,0,8); l.BackgroundTransparency=1; l.Text=parts[1] or "Astra Hub"; l.TextColor3=Theme.Text; l.Font=UIFont.Title; l.TextSize=16; l.TextXAlignment=Enum.TextXAlignment.Left; l.Parent=h
-    elseif parts[2] == "Invisible Steal" then
-        local brand=Instance.new("TextLabel"); brand.Size=UDim2.new(1,-24,0,14); brand.Position=UDim2.new(0,12,0,5); brand.BackgroundTransparency=1; brand.Text=parts[1] or "Astra Hub"; brand.TextColor3=Theme.Text; brand.Font=Enum.Font.GothamBlack; brand.TextSize=11; brand.TextXAlignment=Enum.TextXAlignment.Center; brand.Parent=h
-        local l=Instance.new("TextLabel"); l.Size=UDim2.new(1,-24,0,16); l.Position=UDim2.new(0,12,0,20); l.BackgroundTransparency=1; l.Text=parts[2]; l.TextColor3=Theme.Text; l.Font=Enum.Font.GothamBold; l.TextSize=12; l.TextXAlignment=Enum.TextXAlignment.Center; l.Parent=h
-    else
-        local brand=Instance.new("TextLabel"); brand.Size=UDim2.new(1,-58,0,12); brand.Position=UDim2.new(0,12,0,5); brand.BackgroundTransparency=1; brand.Text=parts[1] or "Astra Hub"; brand.TextColor3=Theme.Dim; brand.Font=UIFont.Brand; brand.TextSize=9; brand.TextXAlignment=Enum.TextXAlignment.Center; brand.Parent=h
-        local l=Instance.new("TextLabel"); l.Size=UDim2.new(1,-58,0,16); l.Position=UDim2.new(0,12,0,18); l.BackgroundTransparency=1; l.Text=parts[2] or ""; l.TextColor3=Theme.Text; l.Font=UIFont.Title; l.TextSize=12; l.TextXAlignment=Enum.TextXAlignment.Center; l.Parent=h
-    end
-    local d=Instance.new("Frame"); d.Size=UDim2.new(1,-24,0,1); d.Position=UDim2.new(0,12,0,40); d.BackgroundColor3=Theme.Stroke; d.BackgroundTransparency=0.55; d.BorderSizePixel=0; d.Parent=f
-    makeDraggable(f,h,t); return h end
+function makeHeader(f,t,isMain)
+    local h=Instance.new("Frame")
+    h.Size=UDim2.new(1,0,0,42)
+    h.BackgroundTransparency=1
+    h.Parent=f
 
-function makeMainPanel(t,size,pos)
-    local f=Instance.new("Frame"); f.Size=size; f.Position=pos; f.BackgroundColor3=Theme.MainBackground; f.BackgroundTransparency=UITransparency.MainPanel; f.BorderSizePixel=0; f.ClipsDescendants=true; f.Parent=gui; corner(f,14); addOutline(f)
-    -- TOP HEADER (drag area + title + profile)
-    local dragHandle=Instance.new("Frame"); dragHandle.Name="DragHandle"; dragHandle.Size=UDim2.new(1,0,0,44); dragHandle.BackgroundColor3=Theme.SidebarBg or Color3.fromRGB(0,0,0); dragHandle.BackgroundTransparency=UITransparency.Sidebar; dragHandle.BorderSizePixel=0; dragHandle.Parent=f; corner(dragHandle,14)
-    -- cover the bottom rounded corners of header so it looks flat on bottom
-    local hdrFill=Instance.new("Frame"); hdrFill.Size=UDim2.new(1,0,0,14); hdrFill.Position=UDim2.new(0,0,1,-14); hdrFill.BackgroundColor3=dragHandle.BackgroundColor3; hdrFill.BackgroundTransparency=dragHandle.BackgroundTransparency; hdrFill.BorderSizePixel=0; hdrFill.Parent=dragHandle
-    local titleParts={}; for s in string.gmatch(t or "Astra Hub","([^\n]+)") do table.insert(titleParts,s) end
-    local titleLbl=Instance.new("TextLabel"); titleLbl.Name="SidebarTitle"; titleLbl.Size=UDim2.new(1,-110,1,0); titleLbl.Position=UDim2.new(0,16,0,0); titleLbl.BackgroundTransparency=1; titleLbl.Text=titleParts[1] or "Astra Hub"; titleLbl.TextColor3=Theme.Text; titleLbl.Font=Enum.Font.GothamBlack; titleLbl.TextSize=13; titleLbl.TextXAlignment=Enum.TextXAlignment.Left; titleLbl.TextYAlignment=Enum.TextYAlignment.Center; titleLbl.Parent=dragHandle
-    -- Profile (avatar + name) compacted on the right of header
-    -- HORIZONTAL TAB BAR below header
-    local tabBarFrame=Instance.new("Frame"); tabBarFrame.Name="TopTabBar"; tabBarFrame.Size=UDim2.new(1,0,0,34); tabBarFrame.Position=UDim2.new(0,0,0,44); tabBarFrame.BackgroundColor3=Theme.SidebarBg or Color3.fromRGB(0,0,0); tabBarFrame.BackgroundTransparency=(UITransparency.Sidebar or 0)+0.1; tabBarFrame.BorderSizePixel=0; tabBarFrame.ClipsDescendants=true; tabBarFrame.Parent=f
-    local tabBarScroll=Instance.new("ScrollingFrame"); tabBarScroll.Size=UDim2.new(1,-8,1,0); tabBarScroll.Position=UDim2.new(0,4,0,0); tabBarScroll.BackgroundTransparency=1; tabBarScroll.BorderSizePixel=0; tabBarScroll.ScrollBarThickness=0; tabBarScroll.CanvasSize=UDim2.new(0,0,0,0); tabBarScroll.ScrollingDirection=Enum.ScrollingDirection.X; tabBarScroll.Parent=tabBarFrame
-    local tabLay=Instance.new("UIListLayout"); tabLay.FillDirection=Enum.FillDirection.Horizontal; tabLay.Padding=UDim.new(0,3); tabLay.SortOrder=Enum.SortOrder.LayoutOrder; tabLay.VerticalAlignment=Enum.VerticalAlignment.Center; tabLay.Parent=tabBarScroll
-    tabLay:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function() tabBarScroll.CanvasSize=UDim2.new(0,tabLay.AbsoluteContentSize.X+8,0,0) end)
-    sidebarNav=tabBarScroll
-    -- Thin separator between tab bar and content
-    local sep=Instance.new("Frame"); sep.Size=UDim2.new(1,0,0,1); sep.Position=UDim2.new(0,0,0,78); sep.BackgroundColor3=Theme.Stroke; sep.BackgroundTransparency=0.45; sep.BorderSizePixel=0; sep.Parent=f
-    -- CONTENT AREA (full width, below tab bar)
-    local contentBg=Instance.new("Frame"); contentBg.Name="ContentBg"; contentBg.Size=UDim2.new(1,-10,1,-88); contentBg.Position=UDim2.new(0,5,0,80); contentBg.BackgroundColor3=Theme.ContentBg or Theme.MainBackground; contentBg.BackgroundTransparency=UITransparency.Content; contentBg.BorderSizePixel=0; contentBg.Parent=f; corner(contentBg,12)
-    local content=Instance.new("Frame"); content.Name="Content"; content.Size=UDim2.new(1,0,1,0); content.BackgroundTransparency=1; content.Parent=contentBg
-    local body=Instance.new("ScrollingFrame"); body.Size=UDim2.new(1,-20,1,-16); body.Position=UDim2.new(0,10,0,8); body.BackgroundTransparency=1; body.BorderSizePixel=0; body.ScrollBarThickness=2; body.ScrollBarImageColor3=Theme.Stroke; body.ScrollBarImageTransparency=0.35; body.CanvasSize=UDim2.new(0,0,0,0); body.Active=true; body.Parent=content
-    local pad=Instance.new("UIPadding"); pad.PaddingTop=UDim.new(0,6); pad.PaddingBottom=UDim.new(0,10); pad.PaddingLeft=UDim.new(0,2); pad.PaddingRight=UDim.new(0,2); pad.Parent=body
-    local lay=Instance.new("UIListLayout"); lay.Padding=UDim.new(0,8); lay.Parent=body
-    lay:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function() body.CanvasSize=UDim2.new(0,0,0,lay.AbsoluteContentSize.Y+16) end)
-    tabBar=sidebarNav
-    if Config.sizes and Config.sizes[t] then f.Size=UDim2.new(0,Config.sizes[t].x,0,Config.sizes[t].y) end
-    makeDraggable(f,dragHandle,t); makeResizable(f,UDim2.new(0,340,0,300),t); return f,body
+    local parts={}
+    for s in string.gmatch(t,"([^\n]+)") do table.insert(parts,s) end
+
+    -- Small purple neon emblem, matching the reference menus.
+    local icon=Instance.new("Frame")
+    icon.Name="GalaxyIcon"
+    icon.Size=UDim2.fromOffset(7,7)
+    icon.Position=UDim2.new(0,12,0,17)
+    icon.BackgroundColor3=Theme.Accent
+    icon.BorderSizePixel=0
+    icon.Parent=h
+    corner(icon,8)
+    stroke(icon,Theme.AccentLight,1,0.15)
+
+    if isMain then
+        local l=Instance.new("TextLabel")
+        l.Size=UDim2.new(1,-58,0,24)
+        l.Position=UDim2.new(0,28,0,8)
+        l.BackgroundTransparency=1
+        l.Text=parts[1] or "Astra Hub"
+        l.TextColor3=Theme.Text
+        l.Font=UIFont.Title
+        l.TextSize=16
+        l.TextXAlignment=Enum.TextXAlignment.Left
+        l.Parent=h
+    elseif parts[2] == "Invisible Steal" then
+        local brand=Instance.new("TextLabel")
+        brand.Size=UDim2.new(1,-44,0,14)
+        brand.Position=UDim2.new(0,22,0,5)
+        brand.BackgroundTransparency=1
+        brand.Text=parts[1] or "Astra Hub"
+        brand.TextColor3=Theme.AccentLight
+        brand.Font=Enum.Font.GothamBlack
+        brand.TextSize=10
+        brand.TextXAlignment=Enum.TextXAlignment.Center
+        brand.Parent=h
+
+        local l=Instance.new("TextLabel")
+        l.Size=UDim2.new(1,-44,0,16)
+        l.Position=UDim2.new(0,22,0,20)
+        l.BackgroundTransparency=1
+        l.Text=parts[2]
+        l.TextColor3=Theme.Text
+        l.Font=Enum.Font.GothamBold
+        l.TextSize=12
+        l.TextXAlignment=Enum.TextXAlignment.Center
+        l.Parent=h
+    else
+        local brand=Instance.new("TextLabel")
+        brand.Size=UDim2.new(1,-58,0,12)
+        brand.Position=UDim2.new(0,29,0,5)
+        brand.BackgroundTransparency=1
+        brand.Text=parts[1] or "Astra Hub"
+        brand.TextColor3=Theme.AccentLight
+        brand.Font=UIFont.Brand
+        brand.TextSize=9
+        brand.TextXAlignment=Enum.TextXAlignment.Center
+        brand.Parent=h
+
+        local l=Instance.new("TextLabel")
+        l.Size=UDim2.new(1,-58,0,16)
+        l.Position=UDim2.new(0,29,0,18)
+        l.BackgroundTransparency=1
+        l.Text=parts[2] or ""
+        l.TextColor3=Theme.Text
+        l.Font=UIFont.Title
+        l.TextSize=12
+        l.TextXAlignment=Enum.TextXAlignment.Center
+        l.Parent=h
+    end
+
+    local d=Instance.new("Frame")
+    d.Size=UDim2.new(1,-24,0,1)
+    d.Position=UDim2.new(0,12,0,40)
+    d.BackgroundColor3=Theme.Accent
+    d.BackgroundTransparency=0.55
+    d.BorderSizePixel=0
+    d.Parent=f
+
+    makeDraggable(f,h,t)
+    return h
 end
 
-function makeQuickPanel(t,size,pos) local f=Instance.new("Frame"); f.Size=size; f.Position=pos; f.BackgroundColor3=Theme.Background; f.BackgroundTransparency=UITransparency.Panel; f.BorderSizePixel=0; f.ClipsDescendants=true; f.Parent=gui; corner(f,12); addOutline(f); makeHeader(f,t,false)
-    local body=Instance.new("ScrollingFrame"); body.Size=UDim2.new(1,-12,1,-50); body.Position=UDim2.new(0,6,0,46); body.BackgroundTransparency=1; body.BorderSizePixel=0; body.ScrollBarThickness=2; body.ScrollBarImageColor3=Theme.Stroke; body.ScrollBarImageTransparency=0.4; body.CanvasSize=UDim2.new(0,0,0,0); body.Active=true; body.Parent=f
-    local lay=Instance.new("UIListLayout"); lay.Padding=UDim.new(0,6); lay.Parent=body
-    lay:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function() body.CanvasSize=UDim2.new(0,0,0,lay.AbsoluteContentSize.Y+10) end); 
-    if Config.sizes and Config.sizes[t] then f.Size = UDim2.new(0, Config.sizes[t].x, 0, Config.sizes[t].y) end
-    if not string.find(t, "Admin Command Panel") then makeResizable(f, UDim2.new(0, 150, 0, 150), t) end; return f,body end
+function makeMainPanel(t,size,pos)
+    local f=Instance.new("Frame")
+    f.Name="AstraHubMainPanel"
+    local oldMain=gui:FindFirstChild("AstraHubMainPanel")
+    if oldMain then pcall(function() oldMain:Destroy() end) end
+    f.Size=size
+    f.Position=pos
+    f.BackgroundColor3=Theme.MainBackground
+    f.BackgroundTransparency=UITransparency.MainPanel
+    f.BorderSizePixel=0
+    f.ClipsDescendants=true
+    f.Parent=gui
+    corner(f,14)
+    addOutline(f)
+
+    -- Neon purple outer glow.
+    local glow=Instance.new("UIStroke")
+    glow.Name="AstraGalaxyGlow"
+    glow.ApplyStrokeMode=Enum.ApplyStrokeMode.Border
+    glow.Thickness=4
+    glow.Color=Theme.Accent
+    glow.Transparency=0.78
+    glow.Parent=f
+
+    local dragHandle=Instance.new("Frame")
+    dragHandle.Name="DragHandle"
+    dragHandle.Size=UDim2.new(1,0,0,44)
+    dragHandle.BackgroundColor3=Theme.SidebarBg or Color3.fromRGB(0,0,0)
+    dragHandle.BackgroundTransparency=UITransparency.Sidebar
+    dragHandle.BorderSizePixel=0
+    dragHandle.Parent=f
+    corner(dragHandle,14)
+
+    local hdrFill=Instance.new("Frame")
+    hdrFill.Size=UDim2.new(1,0,0,14)
+    hdrFill.Position=UDim2.new(0,0,1,-14)
+    hdrFill.BackgroundColor3=dragHandle.BackgroundColor3
+    hdrFill.BackgroundTransparency=dragHandle.BackgroundTransparency
+    hdrFill.BorderSizePixel=0
+    hdrFill.Parent=dragHandle
+
+    local titleParts={}
+    for s in string.gmatch(t or "Astra Hub","([^\n]+)") do table.insert(titleParts,s) end
+
+    local titleLbl=Instance.new("TextLabel")
+    titleLbl.Name="SidebarTitle"
+    titleLbl.Size=UDim2.new(1,-110,1,0)
+    titleLbl.Position=UDim2.new(0,16,0,0)
+    titleLbl.BackgroundTransparency=1
+    titleLbl.Text=titleParts[1] or "Astra Hub"
+    titleLbl.TextColor3=Theme.Text
+    titleLbl.Font=Enum.Font.GothamBlack
+    titleLbl.TextSize=13
+    titleLbl.TextXAlignment=Enum.TextXAlignment.Left
+    titleLbl.TextYAlignment=Enum.TextYAlignment.Center
+    titleLbl.Parent=dragHandle
+
+    local tabBarFrame=Instance.new("Frame")
+    tabBarFrame.Name="TopTabBar"
+    tabBarFrame.Size=UDim2.new(1,0,0,34)
+    tabBarFrame.Position=UDim2.new(0,0,0,44)
+    tabBarFrame.BackgroundColor3=Theme.SidebarBg or Color3.fromRGB(0,0,0)
+    tabBarFrame.BackgroundTransparency=0.08
+    tabBarFrame.BorderSizePixel=0
+    tabBarFrame.ClipsDescendants=true
+    tabBarFrame.Parent=f
+
+    local tabBarScroll=Instance.new("ScrollingFrame")
+    tabBarScroll.Size=UDim2.new(1,-8,1,0)
+    tabBarScroll.Position=UDim2.new(0,4,0,0)
+    tabBarScroll.BackgroundTransparency=1
+    tabBarScroll.BorderSizePixel=0
+    tabBarScroll.ScrollBarThickness=0
+    tabBarScroll.CanvasSize=UDim2.new(0,0,0,0)
+    tabBarScroll.ScrollingDirection=Enum.ScrollingDirection.X
+    tabBarScroll.Parent=tabBarFrame
+
+    local tabLay=Instance.new("UIListLayout")
+    tabLay.FillDirection=Enum.FillDirection.Horizontal
+    tabLay.Padding=UDim.new(0,4)
+    tabLay.SortOrder=Enum.SortOrder.LayoutOrder
+    tabLay.VerticalAlignment=Enum.VerticalAlignment.Center
+    tabLay.Parent=tabBarScroll
+    tabLay:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        tabBarScroll.CanvasSize=UDim2.new(0,tabLay.AbsoluteContentSize.X+8,0,0)
+    end)
+    sidebarNav=tabBarScroll
+
+    local sep=Instance.new("Frame")
+    sep.Size=UDim2.new(1,-20,0,1)
+    sep.Position=UDim2.new(0,10,0,78)
+    sep.BackgroundColor3=Theme.Accent
+    sep.BackgroundTransparency=0.55
+    sep.BorderSizePixel=0
+    sep.Parent=f
+
+    local contentBg=Instance.new("Frame")
+    contentBg.Name="ContentBg"
+    contentBg.Size=UDim2.new(1,-10,1,-88)
+    contentBg.Position=UDim2.new(0,5,0,80)
+    contentBg.BackgroundColor3=Theme.ContentBg or Theme.MainBackground
+    -- This frame is only the visual container/border; it must never cover the tab contents.
+    contentBg.BackgroundTransparency=1
+    contentBg.ZIndex=0
+    contentBg.BorderSizePixel=0
+    contentBg.Parent=f
+    corner(contentBg,12)
+    stroke(contentBg,Theme.Accent,1,0.35)
+
+    local content=Instance.new("Frame")
+    content.Name="Content"
+    content.Size=UDim2.new(1,0,1,0)
+    content.BackgroundTransparency=1
+    content.ZIndex=0
+    content.Parent=contentBg
+
+    local body=Instance.new("ScrollingFrame")
+    body.Size=UDim2.new(1,-20,1,-16)
+    body.Position=UDim2.new(0,10,0,88)
+    body.BackgroundTransparency=1
+    body.BorderSizePixel=0
+    body.ZIndex=20
+    body.ScrollBarThickness=2
+    body.ScrollBarImageColor3=Theme.Accent
+    body.ScrollBarImageTransparency=0.35
+    body.CanvasSize=UDim2.new(0,0,0,0)
+    body.Active=true
+    body.ClipsDescendants=true
+    -- Keep the actual tab content directly above the decorative container.
+    body.Parent=f
+
+    local pad=Instance.new("UIPadding")
+    pad.PaddingTop=UDim.new(0,6)
+    pad.PaddingBottom=UDim.new(0,10)
+    pad.PaddingLeft=UDim.new(0,2)
+    pad.PaddingRight=UDim.new(0,2)
+    pad.Parent=body
+
+    local lay=Instance.new("UIListLayout")
+    lay.Padding=UDim.new(0,8)
+    lay.Parent=body
+    lay:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        body.CanvasSize=UDim2.new(0,0,0,lay.AbsoluteContentSize.Y+16)
+    end)
+
+    tabBar=sidebarNav
+    if Config.sizes and Config.sizes[t] then
+        f.Size=UDim2.new(0,Config.sizes[t].x,0,Config.sizes[t].y)
+    end
+    makeDraggable(f,dragHandle,t)
+    makeResizable(f,UDim2.new(0,340,0,300),t)
+    return f,body
+end
+
+function makeQuickPanel(t,size,pos)
+    local f=Instance.new("Frame")
+    f.Size=size
+    f.Position=pos
+    f.BackgroundColor3=Theme.Background
+    f.BackgroundTransparency=UITransparency.Panel
+    f.BorderSizePixel=0
+    f.ClipsDescendants=true
+    f.Parent=gui
+    corner(f,12)
+    addOutline(f)
+
+    local glow=Instance.new("UIStroke")
+    glow.Name="AstraGalaxyGlow"
+    glow.ApplyStrokeMode=Enum.ApplyStrokeMode.Border
+    glow.Thickness=3
+    glow.Color=Theme.Accent
+    glow.Transparency=0.78
+    glow.Parent=f
+
+    makeHeader(f,t,false)
+
+    local body=Instance.new("ScrollingFrame")
+    body.Size=UDim2.new(1,-12,1,-50)
+    body.Position=UDim2.new(0,6,0,46)
+    body.BackgroundTransparency=1
+    body.BorderSizePixel=0
+    body.ScrollBarThickness=2
+    body.ScrollBarImageColor3=Theme.Accent
+    body.ScrollBarImageTransparency=0.4
+    body.CanvasSize=UDim2.new(0,0,0,0)
+    body.Active=true
+    body.Parent=f
+
+    local lay=Instance.new("UIListLayout")
+    lay.Padding=UDim.new(0,6)
+    lay.Parent=body
+    lay:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        body.CanvasSize=UDim2.new(0,0,0,lay.AbsoluteContentSize.Y+10)
+    end)
+
+    if Config.sizes and Config.sizes[t] then
+        f.Size = UDim2.new(0, Config.sizes[t].x, 0, Config.sizes[t].y)
+    end
+    if not string.find(t, "Admin Command Panel") then
+        makeResizable(f, UDim2.new(0, 150, 0, 150), t)
+    end
+    return f,body
+end
 
 function makeSyncStateRow(parent,text,toggleName,callback)
     regToggle(toggleName,getToggle(toggleName))
@@ -11974,12 +12361,27 @@ end) -- END ADMIN PANEL UI SCOPE (LazyInit)
 function styleSidebarTabs(activeTab)
     for name, btn in pairs(tabButtons) do
         local active = name == activeTab
-        btn.BackgroundColor3 = Theme.SidebarActive or Color3.fromRGB(55,55,65)
-        btn.BackgroundTransparency = active and (UITransparency.SidebarTab or 0.12) or 0.82
+        btn.BackgroundColor3 = active and (Theme.SoftAccent or Theme.Accent) or (Theme.SidebarActive or Theme.Panel)
+        btn.BackgroundTransparency = active and 0.10 or 0.72
         btn.TextColor3 = active and (Theme.SidebarActiveText or Theme.Accent or Theme.Text) or (Theme.SidebarInactiveText or Theme.Text)
         btn.Font = active and Enum.Font.GothamBold or Enum.Font.GothamMedium
+
         local ind = btn:FindFirstChild("ActiveInd")
-        if ind then ind.Visible = active; ind.BackgroundColor3 = Theme.Accent or Color3.fromRGB(74,140,255) end
+        if ind then
+            ind.Visible = active
+            ind.Size=UDim2.new(1,-8,0,3)
+            ind.Position=UDim2.new(0,4,1,-3)
+            ind.BackgroundColor3=Theme.Accent or Color3.fromRGB(185,55,255)
+        end
+
+        local bs=btn:FindFirstChildOfClass("UIStroke")
+        if not bs then
+            bs=Instance.new("UIStroke")
+            bs.Thickness=1
+            bs.Parent=btn
+        end
+        bs.Color=Theme.Accent
+        bs.Transparency=active and 0.35 or 0.88
     end
 end
 _G.styleSidebarTabs = styleSidebarTabs
@@ -12018,7 +12420,8 @@ do
         b.TextSize=10
         b.AutoButtonColor=false
         b.Parent=sidebarNav
-        corner(b,6)
+        corner(b,7)
+        stroke(b,Theme.Accent,1,0.88)
         local bp=Instance.new("UIPadding"); bp.PaddingLeft=UDim.new(0,10); bp.PaddingRight=UDim.new(0,10); bp.Parent=b
         -- Bottom accent indicator (horizontal bar at bottom of tab)
         local ind=Instance.new("Frame")
@@ -12315,7 +12718,7 @@ function makePriorityRestoreRow()
     end)
 end
 
-function loadTab(tabName)
+function _loadTabInternal(tabName)
     UI.CurrentTab=tabName; clearBody(mainBody)
     pcall(function() mainBody:FindFirstChildOfClass("UIListLayout").SortOrder = Enum.SortOrder.LayoutOrder end)
     styleSidebarTabs(tabName)
@@ -12868,12 +13271,52 @@ end)
         end)
     end
 
+    -- IMPORTANT: most controls are created with the default ZIndex (0).
+    -- The decorative ContentBg is intentionally on a lower visual layer,
+    -- so rebuilding a tab can never hide its labels/buttons behind it.
+    bringBodyContentToFront(mainBody)
+
     local idx = 0
     for _, child in ipairs(mainBody:GetChildren()) do
         if child:IsA("GuiObject") and not child:IsA("UIListLayout") and not child:IsA("UIPadding") then
             idx = idx + 1
             child.LayoutOrder = idx
         end
+    end
+end
+
+-- Safe tab loader: prevents overlapping tab rebuilds from clearing the visible panel.
+local _tabLoadBusy = false
+local _tabLoadQueued = nil
+function loadTab(tabName)
+    if not mainBody or not mainBody.Parent then return end
+    if _tabLoadBusy then
+        _tabLoadQueued = tabName
+        return
+    end
+
+    _tabLoadBusy = true
+    local requested = tabName or UI.CurrentTab or "Auto TP"
+    local ok, err = pcall(function()
+        _loadTabInternal(requested)
+    end)
+
+    if not ok then
+        warn("[Astra Hub] Tab load error: ", err)
+        -- A failed rebuild used to leave the second/empty-looking panel visible.
+        -- Rebuild the last stable tab once instead of leaving mainBody empty.
+        local fallback = UI.CurrentTab or "Auto TP"
+        pcall(function() _loadTabInternal(fallback) end)
+    end
+
+    _tabLoadBusy = false
+
+    if _tabLoadQueued and _tabLoadQueued ~= requested then
+        local nextTab = _tabLoadQueued
+        _tabLoadQueued = nil
+        task.defer(function() loadTab(nextTab) end)
+    else
+        _tabLoadQueued = nil
     end
 end
 
@@ -12987,6 +13430,25 @@ if _G.addLazyUI then _G.addLazyUI(bottomBar, true) end
 task.defer(function()
     loadTab("Auto TP")
     rebuildActions(); rebuildActionSettings(); rebuildTpSpeedSettings()
+end)
+
+-- Recover automatically if another initialization/theme pass ever leaves the tab body empty.
+task.spawn(function()
+    while main and main.Parent do
+        task.wait(0.35)
+        if main.Visible and mainBody and mainBody.Parent then
+            local hasContent = false
+            for _, child in ipairs(mainBody:GetChildren()) do
+                if child:IsA("GuiObject") and child.Name ~= "UIListLayout" and child.Name ~= "UIPadding" then
+                    hasContent = true
+                    break
+                end
+            end
+            if not hasContent and not _tabLoadBusy then
+                pcall(function() loadTab(UI.CurrentTab or "Auto TP") end)
+            end
+        end
+    end
 end)
 
 -- FPS/PING COUNTER
@@ -15529,4 +15991,3 @@ end)
         _G.MynxxScannerReady = true -- TpOnLoad fast path waits on this
     end)
 end
-
